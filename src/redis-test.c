@@ -44,7 +44,26 @@
 #include "ae.h"
 #include "hiredis.h"
 #include "adlist.h"
+
 #include "zmalloc.h"
+
+static char * keyprefix =  "__rand_int__";
+
+void genRandom(char *s, size_t len)
+{
+    static const char alphanum[] = {
+        "0123456789"
+        "!@#$%^&*"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+    };
+    static size_t alphanumLen = sizeof(alphanum) - 1;
+
+    for (size_t i = 0; i < len-1; ++i) {
+        s[i] = alphanum[random() % alphanumLen];
+    }
+    // s[len-1] = '\0';
+}
 
 #define UNUSED(V) ((void) V)
 #define RANDPTR_INITIAL_SIZE 8
@@ -78,6 +97,9 @@ static struct config {
     int dbnum;
     sds dbnumstr;
     char *tests;
+
+    char *keyprefix;
+    size_t keyprefixlen;
 } config;
 
 typedef struct _client {
@@ -157,15 +179,17 @@ static void randomizeClientKey(client c) {
     size_t i;
 
     for (i = 0; i < c->randlen; i++) {
-        char *p = c->randptr[i]+11;
-        size_t r = random() % config.randomkeys_keyspacelen;
-        size_t j;
+        char *p = c->randptr[i]+config.keyprefixlen;
+        // size_t r = random() % config.randomkeys_keyspacelen;
+        // size_t j;
 
-        for (j = 0; j < 12; j++) {
-            *p = '0'+r%10;
-            r/=10;
-            p--;
-        }
+        // for (j = 0; j < 12; j++) {
+        //     *p = '0'+r%10;
+        //     r/=10;
+        //     p--;
+        // }
+
+        genRandom(p, config.randomkeys_keyspacelen);
     }
 }
 
@@ -384,14 +408,20 @@ static client createClient(char *cmd, size_t len, client from) {
             c->randlen = 0;
             c->randfree = RANDPTR_INITIAL_SIZE;
             c->randptr = zmalloc(sizeof(char*)*c->randfree);
-            while ((p = strstr(p,"__rand_int__")) != NULL) {
+            // while ((p = strstr(p,"__rand_int__")) != NULL) {
+            size_t inclen = config.keyprefixlen;
+            if (config.keysize) {
+                inclen = config.keysize;
+            }
+            while ((p = strstr(p, config.keyprefix)) != NULL) {
                 if (c->randfree == 0) {
                     c->randptr = zrealloc(c->randptr,sizeof(char*)*c->randlen*2);
                     c->randfree += c->randlen;
                 }
                 c->randptr[c->randlen++] = p;
                 c->randfree--;
-                p += 12; /* 12 is strlen("__rand_int__). */
+                // p += config.keyprefixlen;
+                p += inclen;
             }
         }
     }
@@ -423,16 +453,17 @@ static int compareLatency(const void *a, const void *b) {
 static void showLatencyReport(void) {
     int i, curlat = 0;
     float perc, reqpersec;
+    long long totlatency = 0;
 
     reqpersec = (float)config.requests_finished/((float)config.totlatency/1000);
     if (!config.quiet && !config.csv) {
         printf("====== %s ======\n", config.title);
-        printf("  %d requests completed in %.2f seconds\n", config.requests_finished,
-            (float)config.totlatency/1000);
-        printf("  %d parallel clients\n", config.numclients);
-        printf("  %d bytes payload\n", config.datasize);
-        printf("  keep alive: %d\n", config.keepalive);
-        printf("\n");
+        // printf("  %d requests completed in %.2f seconds\n", config.requests_finished,
+        //    (float)config.totlatency/1000);
+        // printf("  %d parallel clients\n", config.numclients);
+        // printf("  %d bytes payload\n", config.datasize);
+        // printf("  keep alive: %d\n", config.keepalive);
+        // printf("\n");
 
         qsort(config.latency,config.requests,sizeof(long long),compareLatency);
         for (i = 0; i < config.requests; i++) {
@@ -441,8 +472,18 @@ static void showLatencyReport(void) {
                 perc = ((float)(i+1)*100)/config.requests;
                 printf("%.2f%% <= %d milliseconds\n", perc, curlat);
             }
+            totlatency += config.latency[i];
         }
-        printf("%.2f requests per second\n\n", reqpersec);
+
+        // totol latency 只能是各个 request 的 latency 之和，不能使用 config.totlancy，因为它是错略的aeMain前后的时间，
+        // 把计算随机 key 的计算时间也计算在内了
+        reqpersec = (float)config.requests_finished/((float)totlatency/1e6);
+        printf("\n");
+        printf("  %d parallel clients\n", config.numclients);
+        printf("  %d bytes payload\n", config.datasize);
+        printf("  keep alive: %d\n", config.keepalive);
+        printf("  %d requests completed in %.2f seconds\n", config.requests_finished, (float)totlatency/1e6);
+        printf("  %.2f requests per second\n\n", reqpersec);
     } else if (config.csv) {
         printf("\"%s\",\"%.2f\"\n", config.title, reqpersec);
     } else {
@@ -514,6 +555,12 @@ int parseOptions(int argc, const char **argv) {
             config.quiet = 1;
         } else if (!strcmp(argv[i],"--csv")) {
             config.csv = 1;
+        } else if (!strcmp(argv[i],"--kp")) {
+            config.keyprefix = argv[++i];
+            config.keyprefixlen = strlen(config.keyprefix);
+            if (config.keyprefixlen == 0) {
+                goto invalid;
+            }
         } else if (!strcmp(argv[i],"-l")) {
             config.loop = 1;
         } else if (!strcmp(argv[i],"-I")) {
@@ -563,6 +610,7 @@ usage:
 " -d <size>          Data size of SET/GET value in bytes (default 3)\n"
 " --dbnum <db>       SELECT the specified db number (default 0)\n"
 " -k <boolean>       1=keep alive 0=reconnect (default 1)\n"
+" --kf <string>      Key prefix\n"
 " -r <keyspacelen>   Use random keys for SET/GET/INCR, random values for SADD\n"
 "  Using this option the benchmark will expand the string __rand_int__\n"
 "  inside an argument with a 12 digits number in the specified range\n"
@@ -610,7 +658,7 @@ int showThroughput(struct aeEventLoop *eventLoop, long long id, void *clientData
     if (config.idlemode == 1) {
         printf("clients: %d\r", config.liveclients);
         fflush(stdout);
-	return 250;
+    return 250;
     }
     float dt = (float)(mstime()-config.start)/1000.0;
     float rps = (float)config.requests_finished/dt;
@@ -650,11 +698,14 @@ int main(int argc, const char **argv) {
     config.el = aeCreateEventLoop(1024*10);
     aeCreateTimeEvent(config.el,1,showThroughput,NULL,NULL);
     config.keepalive = 1;
+    config.keysize = 0;
     config.datasize = 3;
     config.pipeline = 1;
     config.showerrors = 0;
     config.randomkeys = 0;
     config.randomkeys_keyspacelen = 0;
+    config.keyprefix = keyprefix;
+    config.keyprefixlen = strlen(config.keyprefix);
     config.quiet = 0;
     config.csv = 0;
     config.loop = 0;
@@ -718,9 +769,27 @@ int main(int argc, const char **argv) {
         }
 
         if (test_is_selected("set")) {
-            len = redisFormatCommand(&cmd,"SET key:__rand_int__ %s",data);
-            benchmark("SET",cmd,len);
+            // char * cmd = "SET key:__rand_int__";
+            sds cmdstr = sdsnew("SET ");
+            if (config.keyprefix != keyprefix) {
+                cmdstr = sdscat(cmdstr, config.keyprefix);
+                config.keysize = config.keyprefixlen;
+            } else {
+                const char* key = "key:__rand_int__";
+                cmdstr = sdscat(cmdstr, key);
+                config.keysize = strlen(key);
+            }
+            if (config.randomkeys_keyspacelen) {
+                for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+                    cmdstr = sdscat(cmdstr, "z");
+                }
+                config.keysize += config.randomkeys_keyspacelen;
+            }
+            cmdstr = sdscat(cmdstr, " %s");
+            len = redisFormatCommand(&cmd, cmdstr, data);
+            benchmark("SET", cmd, len);
             free(cmd);
+            sdsfree(cmdstr);
         }
 
         if (test_is_selected("get")) {
