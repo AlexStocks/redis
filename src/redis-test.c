@@ -841,6 +841,32 @@ void test_hset(char* data) {
     sdsfree(cmdstr);
 }
 
+void test_hget() {
+    sds cmdstr = sdsnew("HGET ");
+    if (config.keyprefix != keyprefix) {
+        cmdstr = sdscat(cmdstr, config.keyprefix);
+        config.keysize = config.keyprefixlen;
+    } else {
+        const char* key = "myset:__rand_int__";
+        cmdstr = sdscat(cmdstr, key);
+        config.keysize = strlen(key);
+    }
+    if (config.randomkeys_keyspacelen) {
+        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+            cmdstr = sdscat(cmdstr, "z");
+        }
+        config.keysize += config.randomkeys_keyspacelen;
+    }
+    cmdstr = sdscat(cmdstr, " element:__rand_field__");
+    printf("cmd: %s\n", cmdstr);
+
+    char* cmd;
+    int len = redisFormatCommand(&cmd, cmdstr);
+    benchmark("HGET", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
+
 void test_hmset(char* data) {
     sds cmdstr = sdsnew("HMSET ");
 
@@ -868,13 +894,13 @@ void test_hmset(char* data) {
     printf("cmd: %s\n", cmdstr);
 
     char* cmd;
-    int len = redisFormatCommand(&cmd, cmdstr, data);
+    int len = redisFormatCommand(&cmd, cmdstr);
     benchmark("HMSET", cmd, len);
     free(cmd);
     sdsfree(cmdstr);
 }
 
-void test_hmget(char* data) {
+void test_hmget() {
     sds cmdstr = sdsnew("HMGET ");
 
     // key
@@ -894,14 +920,14 @@ void test_hmget(char* data) {
         config.keysize += config.randomkeys_keyspacelen;
     }
 
-    // field, value
+    // field
     for (int i = 0; i < config.subkeys; i+=1) {
-        cmdstr = sdscatprintf(cmdstr, " element:__rand_field__%d %s ", i, data);
+        cmdstr = sdscatprintf(cmdstr, " element:__rand_field__%d ", i);
     }
     printf("cmd: %s\n", cmdstr);
 
     char* cmd;
-    int len = redisFormatCommand(&cmd, cmdstr, data);
+    int len = redisFormatCommand(&cmd, cmdstr);
     benchmark("HMGET", cmd, len);
     free(cmd);
     sdsfree(cmdstr);
@@ -1051,12 +1077,16 @@ int main(int argc, const char **argv) {
             test_hset(data);
         }
 
+        if (test_is_selected("hget")) {
+            test_hget();
+        }
+
         if (test_is_selected("hmset")) {
             test_hmset(data);
         }
 
         if (test_is_selected("hmget")) {
-            test_hmget(data);
+            test_hmget();
         }
 
         if (test_is_selected("spop")) {
