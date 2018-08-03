@@ -866,6 +866,38 @@ void test_hmset(char* data) {
     sdsfree(cmdstr);
 }
 
+void test_hmget(char* data) {
+    sds cmdstr = sdsnew("HMGET ");
+
+    // key
+    if (config.keyprefix != keyprefix) {
+        cmdstr = sdscat(cmdstr, config.keyprefix);
+        config.keysize = config.keyprefixlen;
+    } else {
+        const char* key = "myset:__rand_int__";
+        cmdstr = sdscat(cmdstr, key);
+        config.keysize = strlen(key);
+    }
+
+    if (config.randomkeys_keyspacelen) {
+        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+            cmdstr = sdscat(cmdstr, "z");
+        }
+        config.keysize += config.randomkeys_keyspacelen;
+    }
+
+    // field, value
+    for (int i = 0; i < 10; i+=1) {
+        cmdstr = sdscatprintf(cmdstr, " element:__rand_field__%d %s ", i, data);
+    }
+    printf("cmd: %s\n", cmdstr);
+
+    char* cmd;
+    int len = redisFormatCommand(&cmd, cmdstr, data);
+    benchmark("HMGET", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
 
 int main(int argc, const char **argv) {
     int i;
@@ -1012,6 +1044,10 @@ int main(int argc, const char **argv) {
 
         if (test_is_selected("hmset")) {
             test_hmset(data);
+        }
+
+        if (test_is_selected("hmget")) {
+            test_hmget(data);
         }
 
         if (test_is_selected("spop")) {
