@@ -102,7 +102,7 @@ static struct config {
 
     char *keyprefix;
     size_t keyprefixlen;
-    char* value;
+    int inc_value;
 } config;
 
 typedef struct _client {
@@ -586,7 +586,7 @@ int parseOptions(int argc, const char **argv) {
             config.showerrors = 1;
         } else if (!strcmp(argv[i],"-v")) {
             if (lastarg) goto invalid;
-            config.value = argv[++i];
+            config.inc_value = atoi(argv[++i]);
         } else if (!strcmp(argv[i],"-m")) {
             if (lastarg) goto invalid;
             config.maxlatency = atoi(argv[++i]);
@@ -650,7 +650,7 @@ usage:
 " -t <tests>         Only run the comma separated list of tests. The test\n"
 "                    names are the same as the ones produced as output.\n"
 " -I                 Idle mode. Just open N idle connections and wait.\n\n"
-" -v                 Value of INCRBY\n"
+" -v                 Value of INCRBY/HINCRBY\n"
 "Examples:\n\n"
 " Run the benchmark with the default configuration against 127.0.0.1:6379:\n"
 "   $ redis-benchmark\n\n"
@@ -781,14 +781,7 @@ void test_decr() {
 
 void test_incrby() {
     sds cmdstr = sdsnew("INCRBY ");
-    int incv = 0;
-    if (NULL != config.value) {
-        incv = atoi(config.value);
-    }
-    if (incv == 0) {
-        printf("Error: incby value is 0\n");
-        exit(1);
-    }
+    int incv = config.inc_value;
     if (config.keyprefix != keyprefix) {
         cmdstr = sdscat(cmdstr, config.keyprefix);
         config.keysize = config.keyprefixlen;
@@ -933,6 +926,38 @@ void test_hmget() {
     sdsfree(cmdstr);
 }
 
+void test_hincrby() {
+    sds cmdstr = sdsnew("HINCRBY ");
+
+    // value
+    int incv = config.inc_value;
+      // key
+    if (config.keyprefix != keyprefix) {
+        cmdstr = sdscat(cmdstr, config.keyprefix);
+        config.keysize = config.keyprefixlen;
+    } else {
+        const char* key = "myset:__rand_int__";
+        cmdstr = sdscat(cmdstr, key);
+        config.keysize = strlen(key);
+    }
+    if (config.randomkeys_keyspacelen) {
+        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+            cmdstr = sdscat(cmdstr, "z");
+        }
+        config.keysize += config.randomkeys_keyspacelen;
+    }
+
+    // field
+    cmdstr = sdscatprintf(cmdstr, " element:__rand_field__ %d", incv);
+    printf("cmd: %s\n", cmdstr);
+
+    char* cmd;
+    int len = redisFormatCommand(&cmd, cmdstr);
+    benchmark("HINCRBY", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
+
 int main(int argc, const char **argv) {
     int i;
     char *data, *cmd;
@@ -971,7 +996,7 @@ int main(int argc, const char **argv) {
     config.hostsocket = NULL;
     config.tests = NULL;
     config.dbnum = 0;
-    config.value = NULL;
+    config.inc_value = 1;
 
     i = parseOptions(argc,argv);
     argc -= i;
@@ -1087,6 +1112,10 @@ int main(int argc, const char **argv) {
 
         if (test_is_selected("hmget")) {
             test_hmget();
+        }
+
+        if (test_is_selected("hincrby")) {
+            test_hincrby();
         }
 
         if (test_is_selected("spop")) {
