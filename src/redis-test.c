@@ -860,6 +860,34 @@ void test_hget() {
     sdsfree(cmdstr);
 }
 
+void test_hkeys() {
+    sds cmdstr = sdsnew("HKEYS ");
+
+    // key
+    if (config.keyprefix != keyprefix) {
+        cmdstr = sdscat(cmdstr, config.keyprefix);
+        config.keysize = config.keyprefixlen;
+    } else {
+        const char* key = "myset:__rand_int__";
+        cmdstr = sdscat(cmdstr, key);
+        config.keysize = strlen(key);
+    }
+    if (config.randomkeys_keyspacelen) {
+        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+            cmdstr = sdscat(cmdstr, "z");
+        }
+        config.keysize += config.randomkeys_keyspacelen;
+    }
+
+    printf("cmd: %s\n", cmdstr);
+
+    char* cmd;
+    int len = redisFormatCommand(&cmd, cmdstr);
+    benchmark("HKEYS", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
+
 void test_hmset(char* data) {
     sds cmdstr = sdsnew("HMSET ");
 
@@ -1112,6 +1140,10 @@ int main(int argc, const char **argv) {
 
         if (test_is_selected("hmget")) {
             test_hmget();
+        }
+
+        if (test_is_selected("hkeys")) {
+            test_hkeys();
         }
 
         if (test_is_selected("hincrby")) {
