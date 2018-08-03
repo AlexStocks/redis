@@ -87,6 +87,7 @@ static struct config {
     int showerrors;
     long long start;
     long long totlatency;
+    long long maxlatency;
     long long *latency;
     const char *title;
     list *clients;
@@ -100,6 +101,7 @@ static struct config {
 
     char *keyprefix;
     size_t keyprefixlen;
+    char* value;
 } config;
 
 typedef struct _client {
@@ -454,6 +456,8 @@ static void showLatencyReport(void) {
     int i, curlat = 0;
     float perc, reqpersec;
     long long totlatency = 0;
+    long long maxlatency = config.maxlatency * 1e3;
+    long long beyondnum = 0;
 
     reqpersec = (float)config.requests_finished/((float)config.totlatency/1000);
     if (!config.quiet && !config.csv) {
@@ -466,6 +470,7 @@ static void showLatencyReport(void) {
         // printf("\n");
 
         qsort(config.latency,config.requests,sizeof(long long),compareLatency);
+        beyondnum = 0;
         for (i = 0; i < config.requests; i++) {
             if (config.latency[i]/1000 != curlat || i == (config.requests-1)) {
                 curlat = config.latency[i]/1000;
@@ -473,7 +478,11 @@ static void showLatencyReport(void) {
                 printf("%.2f%% <= %d milliseconds\n", perc, curlat);
             }
             totlatency += config.latency[i];
+            if (maxlatency < config.latency[i]) {
+                beyondnum ++;
+            }
         }
+        printf("%d requests latency > %d milliseconds\n", beyondnum, config.maxlatency);
 
         // totol latency 只能是各个 request 的 latency 之和，不能使用 config.totlancy，因为它是错略的aeMain前后的时间，
         // 把计算随机 key 的计算时间也计算在内了
@@ -567,6 +576,12 @@ int parseOptions(int argc, const char **argv) {
             config.idlemode = 1;
         } else if (!strcmp(argv[i],"-e")) {
             config.showerrors = 1;
+        } else if (!strcmp(argv[i],"-v")) {
+            if (lastarg) goto invalid;
+            config.value = argv[++i];
+        } else if (!strcmp(argv[i],"-m")) {
+            if (lastarg) goto invalid;
+            config.maxlatency = atoi(argv[++i]);
         } else if (!strcmp(argv[i],"-t")) {
             if (lastarg) goto invalid;
             /* We get the list of tests to run as a string in the form
@@ -606,8 +621,9 @@ usage:
 " -p <port>          Server port (default 6379)\n"
 " -s <socket>        Server socket (overrides host and port)\n"
 " -c <clients>       Number of parallel connections (default 50)\n"
+" -m <maxlatency>    Max latency in millisecond (default 10)\n"
 " -n <requests>      Total number of requests (default 100000)\n"
-" -d <size>          Data size of SET/GET value in bytes (default 3)\n"
+" -d <size>          Data size of SET/GET value in bytes (default 3).\n"
 " --dbnum <db>       SELECT the specified db number (default 0)\n"
 " -k <boolean>       1=keep alive 0=reconnect (default 1)\n"
 " --kf <string>      Key prefix\n"
@@ -626,6 +642,7 @@ usage:
 " -t <tests>         Only run the comma separated list of tests. The test\n"
 "                    names are the same as the ones produced as output.\n"
 " -I                 Idle mode. Just open N idle connections and wait.\n\n"
+" -v                 Value of INCRBY\n"
 "Examples:\n\n"
 " Run the benchmark with the default configuration against 127.0.0.1:6379:\n"
 "   $ redis-benchmark\n\n"
@@ -681,6 +698,141 @@ int test_is_selected(char *name) {
     return strstr(config.tests,buf) != NULL;
 }
 
+void test_set(char* data) {
+    sds cmdstr = sdsnew("SET ");
+    if (config.keyprefix != keyprefix) {
+        cmdstr = sdscat(cmdstr, config.keyprefix);
+        config.keysize = config.keyprefixlen;
+    } else {
+        const char* key = "key:__rand_int__";
+        cmdstr = sdscat(cmdstr, key);
+        config.keysize = strlen(key);
+    }
+    if (config.randomkeys_keyspacelen) {
+        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+            cmdstr = sdscat(cmdstr, "z");
+        }
+        config.keysize += config.randomkeys_keyspacelen;
+    }
+    cmdstr = sdscat(cmdstr, " %s");
+    char* cmd;
+    printf("cmd: %s\n", cmdstr);
+    int len = redisFormatCommand(&cmd, cmdstr, data);
+    benchmark("SET", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
+
+void test_incr() {
+    sds cmdstr = sdsnew("INCR ");
+    if (config.keyprefix != keyprefix) {
+        cmdstr = sdscat(cmdstr, config.keyprefix);
+        config.keysize = config.keyprefixlen;
+    } else {
+        const char* key = "counter:__rand_int__";
+        cmdstr = sdscat(cmdstr, key);
+        config.keysize = strlen(key);
+    }
+    if (config.randomkeys_keyspacelen) {
+        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+            cmdstr = sdscat(cmdstr, "z");
+        }
+        config.keysize += config.randomkeys_keyspacelen;
+    }
+    char* cmd;
+    printf("cmd: %s\n", cmdstr);
+    int len = redisFormatCommand(&cmd, cmdstr);
+    benchmark("INCR", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
+
+void test_decr() {
+    sds cmdstr = sdsnew("DECR ");
+    if (config.keyprefix != keyprefix) {
+        cmdstr = sdscat(cmdstr, config.keyprefix);
+        config.keysize = config.keyprefixlen;
+    } else {
+        const char* key = "counter:__rand_int__";
+        cmdstr = sdscat(cmdstr, key);
+        config.keysize = strlen(key);
+    }
+    if (config.randomkeys_keyspacelen) {
+        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+            cmdstr = sdscat(cmdstr, "z");
+        }
+        config.keysize += config.randomkeys_keyspacelen;
+    }
+    char* cmd;
+    printf("cmd: %s\n", cmdstr);
+    int len = redisFormatCommand(&cmd, cmdstr);
+    benchmark("DECR", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
+
+void test_incrby() {
+    sds cmdstr = sdsnew("INCRBY ");
+    int incv = 0;
+    if (NULL != config.value) {
+        incv = atoi(config.value);
+    }
+    if (incv == 0) {
+        printf("Error: incby value is 0\n");
+        exit(1);
+    }
+    if (config.keyprefix != keyprefix) {
+        cmdstr = sdscat(cmdstr, config.keyprefix);
+        config.keysize = config.keyprefixlen;
+    } else {
+        const char* key = "counter:__rand_int__";
+        cmdstr = sdscat(cmdstr, key);
+        config.keysize = strlen(key);
+    }
+    if (config.randomkeys_keyspacelen) {
+        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+            cmdstr = sdscat(cmdstr, "z");
+        }
+        config.keysize += config.randomkeys_keyspacelen;
+    }
+    // cmdstr = sdscatfmt(cmdstr, " %d", incv);
+    // printf("cmd %s\n", cmdstr);
+    cmdstr = sdscatprintf(cmdstr, " %d", incv);
+    printf("cmd: %s\n", cmdstr);
+
+    char* cmd;
+    int len = redisFormatCommand(&cmd, cmdstr);
+    benchmark("INCRBY", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
+
+void test_hset(char* data) {
+    sds cmdstr = sdsnew("HSET ");
+    if (config.keyprefix != keyprefix) {
+        cmdstr = sdscat(cmdstr, config.keyprefix);
+        config.keysize = config.keyprefixlen;
+    } else {
+        const char* key = "myset:__rand_int__";
+        cmdstr = sdscat(cmdstr, key);
+        config.keysize = strlen(key);
+    }
+    if (config.randomkeys_keyspacelen) {
+        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+            cmdstr = sdscat(cmdstr, "z");
+        }
+        config.keysize += config.randomkeys_keyspacelen;
+    }
+    cmdstr = sdscat(cmdstr, " element:__rand_field__ %s");
+    printf("cmd: %s\n", cmdstr);
+
+    char* cmd;
+    int len = redisFormatCommand(&cmd, cmdstr, data);
+    benchmark("HSET", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
+
 int main(int argc, const char **argv) {
     int i;
     char *data, *cmd;
@@ -711,12 +863,14 @@ int main(int argc, const char **argv) {
     config.loop = 0;
     config.idlemode = 0;
     config.latency = NULL;
+    config.maxlatency = 10;
     config.clients = listCreate();
     config.hostip = "127.0.0.1";
     config.hostport = 6379;
     config.hostsocket = NULL;
     config.tests = NULL;
     config.dbnum = 0;
+    config.value = NULL;
 
     i = parseOptions(argc,argv);
     argc -= i;
@@ -725,7 +879,8 @@ int main(int argc, const char **argv) {
     config.latency = zmalloc(sizeof(long long)*config.requests);
 
     if (config.keepalive == 0) {
-        printf("WARNING: keepalive disabled, you probably need 'echo 1 > /proc/sys/net/ipv4/tcp_tw_reuse' for Linux and 'sudo sysctl -w net.inet.tcp.msl=1000' for Mac OS X in order to use a lot of clients/requests\n");
+        printf("WARNING: keepalive disabled, you probably need 'echo 1 > /proc/sys/net/ipv4/tcp_tw_reuse' for Linux "
+        "and 'sudo sysctl -w net.inet.tcp.msl=1000' for Mac OS X in order to use a lot of clients/requests\n");
     }
 
     if (config.idlemode) {
@@ -769,27 +924,7 @@ int main(int argc, const char **argv) {
         }
 
         if (test_is_selected("set")) {
-            // char * cmd = "SET key:__rand_int__";
-            sds cmdstr = sdsnew("SET ");
-            if (config.keyprefix != keyprefix) {
-                cmdstr = sdscat(cmdstr, config.keyprefix);
-                config.keysize = config.keyprefixlen;
-            } else {
-                const char* key = "key:__rand_int__";
-                cmdstr = sdscat(cmdstr, key);
-                config.keysize = strlen(key);
-            }
-            if (config.randomkeys_keyspacelen) {
-                for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-                    cmdstr = sdscat(cmdstr, "z");
-                }
-                config.keysize += config.randomkeys_keyspacelen;
-            }
-            cmdstr = sdscat(cmdstr, " %s");
-            len = redisFormatCommand(&cmd, cmdstr, data);
-            benchmark("SET", cmd, len);
-            free(cmd);
-            sdsfree(cmdstr);
+            test_set(data);
         }
 
         if (test_is_selected("get")) {
@@ -799,9 +934,11 @@ int main(int argc, const char **argv) {
         }
 
         if (test_is_selected("incr")) {
-            len = redisFormatCommand(&cmd,"INCR counter:__rand_int__");
-            benchmark("INCR",cmd,len);
-            free(cmd);
+            test_incr();
+        }
+
+        if (test_is_selected("incrby")) {
+            test_incrby();
         }
 
         if (test_is_selected("lpush")) {
@@ -836,10 +973,7 @@ int main(int argc, const char **argv) {
         }
 
         if (test_is_selected("hset")) {
-            len = redisFormatCommand(&cmd,
-                "HSET myset:__rand_int__ element:__rand_int__ %s",data);
-            benchmark("HSET",cmd,len);
-            free(cmd);
+            test_hset(data);
         }
 
         if (test_is_selected("spop")) {
