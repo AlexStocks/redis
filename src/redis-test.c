@@ -79,6 +79,7 @@ static struct config {
     int requests_issued;
     int requests_finished;
     int keysize;
+    int subkeys;
     int datasize;
     int randomkeys;
     int randomkeys_keyspacelen;
@@ -565,10 +566,17 @@ int parseOptions(int argc, const char **argv) {
         } else if (!strcmp(argv[i],"--csv")) {
             config.csv = 1;
         } else if (!strcmp(argv[i],"--kp")) {
+            if (lastarg) goto invalid;
             config.keyprefix = argv[++i];
             config.keyprefixlen = strlen(config.keyprefix);
             if (config.keyprefixlen == 0) {
                 goto invalid;
+            }
+        } else if (!strcmp(argv[i],"--sk")) {
+            if (lastarg) goto invalid;
+            config.subkeys = atoi(argv[++i]);
+            if (config.subkeys < 1) {
+                config.subkeys = 10;
             }
         } else if (!strcmp(argv[i],"-l")) {
             config.loop = 1;
@@ -854,7 +862,7 @@ void test_hmset(char* data) {
     }
 
     // field, value
-    for (int i = 0; i < 10; i+=1) {
+    for (int i = 0; i < config.subkeys; i+=1) {
         cmdstr = sdscatprintf(cmdstr, " element:__rand_field__%d %s ", i, data);
     }
     printf("cmd: %s\n", cmdstr);
@@ -887,7 +895,7 @@ void test_hmget(char* data) {
     }
 
     // field, value
-    for (int i = 0; i < 10; i+=1) {
+    for (int i = 0; i < config.subkeys; i+=1) {
         cmdstr = sdscatprintf(cmdstr, " element:__rand_field__%d %s ", i, data);
     }
     printf("cmd: %s\n", cmdstr);
@@ -917,6 +925,7 @@ int main(int argc, const char **argv) {
     aeCreateTimeEvent(config.el,1,showThroughput,NULL,NULL);
     config.keepalive = 1;
     config.keysize = 0;
+    config.subkeys = 10;
     config.datasize = 3;
     config.pipeline = 1;
     config.showerrors = 0;
