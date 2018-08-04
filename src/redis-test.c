@@ -774,6 +774,22 @@ void test_incrby() {
     sdsfree(cmdstr);
 }
 
+void test_zadd() {
+    sds cmdstr = sdsnew("ZADD ");
+    cmdstr = packkey(cmdstr, "myzset:__rand_int__");
+    // field, value
+    for (int i = 0; i < config.subkeys; i+=1) {
+        cmdstr = sdscatprintf(cmdstr, " %d element:__rand_field__%d", i, i);
+    }
+    printf("cmd: %s\n", cmdstr);
+
+    char* cmd;
+    int len = redisFormatCommand(&cmd, cmdstr);
+    benchmark("ZADD", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
+
 void test_hset(char* data) {
     sds cmdstr = sdsnew("HSET ");
     cmdstr = packkey(cmdstr, "myset:__rand_int__");
@@ -999,6 +1015,10 @@ int main(int argc, const char **argv) {
                 "SADD myset element:__rand_int__");
             benchmark("SADD",cmd,len);
             free(cmd);
+        }
+
+        if (test_is_selected("zadd")) {
+            test_zadd();
         }
 
         if (test_is_selected("hset")) {
