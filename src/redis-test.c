@@ -706,22 +706,27 @@ int test_is_selected(char *name) {
     return strstr(config.tests,buf) != NULL;
 }
 
-void test_set(char* data) {
-    sds cmdstr = sdsnew("SET ");
+sds packkey(sds cmd, const char* key) {
     if (config.keyprefix != keyprefix) {
-        cmdstr = sdscat(cmdstr, config.keyprefix);
+        cmd = sdscat(cmd, config.keyprefix);
         config.keysize = config.keyprefixlen;
     } else {
-        const char* key = "key:__rand_int__";
-        cmdstr = sdscat(cmdstr, key);
+        cmd = sdscat(cmd, key);
         config.keysize = strlen(key);
     }
     if (config.randomkeys_keyspacelen) {
         for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-            cmdstr = sdscat(cmdstr, "z");
+            cmd = sdscat(cmd, "z");
         }
         config.keysize += config.randomkeys_keyspacelen;
     }
+
+    return cmd;
+}
+
+void test_set(char* data) {
+    sds cmdstr = sdsnew("SET ");
+    cmdstr = packkey(cmdstr, "key:__rand_int__");
     cmdstr = sdscat(cmdstr, " %s");
     char* cmd;
     printf("cmd: %s\n", cmdstr);
@@ -733,20 +738,7 @@ void test_set(char* data) {
 
 void test_incr() {
     sds cmdstr = sdsnew("INCR ");
-    if (config.keyprefix != keyprefix) {
-        cmdstr = sdscat(cmdstr, config.keyprefix);
-        config.keysize = config.keyprefixlen;
-    } else {
-        const char* key = "counter:__rand_int__";
-        cmdstr = sdscat(cmdstr, key);
-        config.keysize = strlen(key);
-    }
-    if (config.randomkeys_keyspacelen) {
-        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-            cmdstr = sdscat(cmdstr, "z");
-        }
-        config.keysize += config.randomkeys_keyspacelen;
-    }
+    cmdstr = packkey(cmdstr, "counter:__rand_int__");
     char* cmd;
     printf("cmd: %s\n", cmdstr);
     int len = redisFormatCommand(&cmd, cmdstr);
@@ -757,20 +749,7 @@ void test_incr() {
 
 void test_decr() {
     sds cmdstr = sdsnew("DECR ");
-    if (config.keyprefix != keyprefix) {
-        cmdstr = sdscat(cmdstr, config.keyprefix);
-        config.keysize = config.keyprefixlen;
-    } else {
-        const char* key = "counter:__rand_int__";
-        cmdstr = sdscat(cmdstr, key);
-        config.keysize = strlen(key);
-    }
-    if (config.randomkeys_keyspacelen) {
-        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-            cmdstr = sdscat(cmdstr, "z");
-        }
-        config.keysize += config.randomkeys_keyspacelen;
-    }
+    cmdstr = packkey(cmdstr, "counter:__rand_int__");
     char* cmd;
     printf("cmd: %s\n", cmdstr);
     int len = redisFormatCommand(&cmd, cmdstr);
@@ -781,21 +760,8 @@ void test_decr() {
 
 void test_incrby() {
     sds cmdstr = sdsnew("INCRBY ");
+    cmdstr = packkey(cmdstr, "counter:__rand_int__");
     int incv = config.inc_value;
-    if (config.keyprefix != keyprefix) {
-        cmdstr = sdscat(cmdstr, config.keyprefix);
-        config.keysize = config.keyprefixlen;
-    } else {
-        const char* key = "counter:__rand_int__";
-        cmdstr = sdscat(cmdstr, key);
-        config.keysize = strlen(key);
-    }
-    if (config.randomkeys_keyspacelen) {
-        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-            cmdstr = sdscat(cmdstr, "z");
-        }
-        config.keysize += config.randomkeys_keyspacelen;
-    }
     // cmdstr = sdscatfmt(cmdstr, " %d", incv);
     // printf("cmd %s\n", cmdstr);
     cmdstr = sdscatprintf(cmdstr, " %d", incv);
@@ -810,20 +776,7 @@ void test_incrby() {
 
 void test_hset(char* data) {
     sds cmdstr = sdsnew("HSET ");
-    if (config.keyprefix != keyprefix) {
-        cmdstr = sdscat(cmdstr, config.keyprefix);
-        config.keysize = config.keyprefixlen;
-    } else {
-        const char* key = "myset:__rand_int__";
-        cmdstr = sdscat(cmdstr, key);
-        config.keysize = strlen(key);
-    }
-    if (config.randomkeys_keyspacelen) {
-        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-            cmdstr = sdscat(cmdstr, "z");
-        }
-        config.keysize += config.randomkeys_keyspacelen;
-    }
+    cmdstr = packkey(cmdstr, "myset:__rand_int__");
     cmdstr = sdscat(cmdstr, " element:__rand_field__ %s");
     printf("cmd: %s\n", cmdstr);
 
@@ -836,20 +789,7 @@ void test_hset(char* data) {
 
 void test_hget() {
     sds cmdstr = sdsnew("HGET ");
-    if (config.keyprefix != keyprefix) {
-        cmdstr = sdscat(cmdstr, config.keyprefix);
-        config.keysize = config.keyprefixlen;
-    } else {
-        const char* key = "myset:__rand_int__";
-        cmdstr = sdscat(cmdstr, key);
-        config.keysize = strlen(key);
-    }
-    if (config.randomkeys_keyspacelen) {
-        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-            cmdstr = sdscat(cmdstr, "z");
-        }
-        config.keysize += config.randomkeys_keyspacelen;
-    }
+    cmdstr = packkey(cmdstr, "myset:__rand_int__");
     cmdstr = sdscat(cmdstr, " element:__rand_field__");
     printf("cmd: %s\n", cmdstr);
 
@@ -862,23 +802,7 @@ void test_hget() {
 
 void test_hkeys() {
     sds cmdstr = sdsnew("HKEYS ");
-
-    // key
-    if (config.keyprefix != keyprefix) {
-        cmdstr = sdscat(cmdstr, config.keyprefix);
-        config.keysize = config.keyprefixlen;
-    } else {
-        const char* key = "myset:__rand_int__";
-        cmdstr = sdscat(cmdstr, key);
-        config.keysize = strlen(key);
-    }
-    if (config.randomkeys_keyspacelen) {
-        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-            cmdstr = sdscat(cmdstr, "z");
-        }
-        config.keysize += config.randomkeys_keyspacelen;
-    }
-
+    cmdstr = packkey(cmdstr, "myset:__rand_int__");
     printf("cmd: %s\n", cmdstr);
 
     char* cmd;
@@ -890,24 +814,7 @@ void test_hkeys() {
 
 void test_hmset(char* data) {
     sds cmdstr = sdsnew("HMSET ");
-
-    // key
-    if (config.keyprefix != keyprefix) {
-        cmdstr = sdscat(cmdstr, config.keyprefix);
-        config.keysize = config.keyprefixlen;
-    } else {
-        const char* key = "myset:__rand_int__";
-        cmdstr = sdscat(cmdstr, key);
-        config.keysize = strlen(key);
-    }
-
-    if (config.randomkeys_keyspacelen) {
-        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-            cmdstr = sdscat(cmdstr, "z");
-        }
-        config.keysize += config.randomkeys_keyspacelen;
-    }
-
+    cmdstr = packkey(cmdstr, "myset:__rand_int__");
     // field, value
     for (int i = 0; i < config.subkeys; i+=1) {
         cmdstr = sdscatprintf(cmdstr, " element:__rand_field__%d %s ", i, data);
@@ -923,24 +830,7 @@ void test_hmset(char* data) {
 
 void test_hmget() {
     sds cmdstr = sdsnew("HMGET ");
-
-    // key
-    if (config.keyprefix != keyprefix) {
-        cmdstr = sdscat(cmdstr, config.keyprefix);
-        config.keysize = config.keyprefixlen;
-    } else {
-        const char* key = "myset:__rand_int__";
-        cmdstr = sdscat(cmdstr, key);
-        config.keysize = strlen(key);
-    }
-
-    if (config.randomkeys_keyspacelen) {
-        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-            cmdstr = sdscat(cmdstr, "z");
-        }
-        config.keysize += config.randomkeys_keyspacelen;
-    }
-
+    cmdstr = packkey(cmdstr, "myset:__rand_int__");
     // field
     for (int i = 0; i < config.subkeys; i+=1) {
         cmdstr = sdscatprintf(cmdstr, " element:__rand_field__%d ", i);
@@ -956,25 +846,10 @@ void test_hmget() {
 
 void test_hincrby() {
     sds cmdstr = sdsnew("HINCRBY ");
+    cmdstr = packkey(cmdstr,  "myset:__rand_int__");
 
     // value
     int incv = config.inc_value;
-      // key
-    if (config.keyprefix != keyprefix) {
-        cmdstr = sdscat(cmdstr, config.keyprefix);
-        config.keysize = config.keyprefixlen;
-    } else {
-        const char* key = "myset:__rand_int__";
-        cmdstr = sdscat(cmdstr, key);
-        config.keysize = strlen(key);
-    }
-    if (config.randomkeys_keyspacelen) {
-        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
-            cmdstr = sdscat(cmdstr, "z");
-        }
-        config.keysize += config.randomkeys_keyspacelen;
-    }
-
     // field
     cmdstr = sdscatprintf(cmdstr, " element:__rand_field__ %d", incv);
     printf("cmd: %s\n", cmdstr);
