@@ -483,7 +483,7 @@ static void showLatencyReport(void) {
                 beyondnum ++;
             }
         }
-        printf("%d requests latency > %d milliseconds\n", beyondnum, config.maxlatency);
+        printf("%lld requests latency > %lld milliseconds\n", beyondnum, config.maxlatency);
 
         // totol latency 只能是各个 request 的 latency 之和，不能使用 config.totlancy，因为它是错略的aeMain前后的时间，
         // 把计算随机 key 的计算时间也计算在内了
@@ -715,7 +715,7 @@ sds packkey(sds cmd, const char* key) {
         config.keysize = strlen(key);
     }
     if (config.randomkeys_keyspacelen) {
-        for (size_t idx = 0; idx < config.randomkeys_keyspacelen; idx++) {
+        for (size_t idx = 0; idx < (size_t)(config.randomkeys_keyspacelen); idx++) {
             cmd = sdscat(cmd, "z");
         }
         config.keysize += config.randomkeys_keyspacelen;
@@ -806,7 +806,7 @@ void test_zrange() {
 void test_zrangebyscore() {
     sds cmdstr = sdsnew("ZRANGEBYSCORE ");
     cmdstr = packkey(cmdstr, "myzset:__rand_int__");
-    cmdstr = sdscatprintf(cmdstr, "%s", " -inf +inf withscores limit 0 %d", config.inc_value);
+    cmdstr = sdscatprintf(cmdstr, "%s %d", " -inf +inf withscores limit 0", config.inc_value);
     printf("cmd: %s\n", cmdstr);
 
     char* cmd;

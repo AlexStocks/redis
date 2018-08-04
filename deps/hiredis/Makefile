@@ -42,7 +42,7 @@ OPTIMIZATION?=-O3
 WARNINGS=-Wall -W -Wstrict-prototypes -Wwrite-strings
 # DEBUG_FLAGS?= -g -ggdb
 DEBUG_FLAGS?= -g -ggdb3 -O0
-# REAL_CFLAGS=$(OPTIMIZATION) -fPIC $(CFLAGS) $(WARNINGS) $(DEBUG_FLAGS) $(ARCH)
+REAL_CFLAGS=$(OPTIMIZATION) -fPIC $(CFLAGS) $(WARNINGS) $(DEBUG_FLAGS) $(ARCH)
 DREAL_CFLAGS=-fPIC $(CFLAGS) $(WARNINGS) $(DEBUG_FLAGS) $(ARCH)
 REAL_LDFLAGS=$(LDFLAGS) $(ARCH)
 
@@ -155,8 +155,8 @@ check: hiredis-test
 	kill `cat /tmp/hiredis-test-redis.pid`
 
 .c.o:
-	# $(CC) -std=c99 -pedantic -c $(REAL_CFLAGS) $<
-	$(CC) -std=c99 -pedantic -c $(DREAL_CFLAGS) $<
+	$(CC) -std=c99 -pedantic -c $(REAL_CFLAGS) $<
+	# $(CC) -std=c99 -pedantic -c $(DREAL_CFLAGS) $<
 
 clean:
 	rm -rf $(DYLIBNAME) $(STLIBNAME) $(TESTS) $(PKGCONFNAME) examples/hiredis-example* *.o *.gcda *.gcno *.gcov
