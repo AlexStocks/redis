@@ -803,6 +803,19 @@ void test_zrange() {
     sdsfree(cmdstr);
 }
 
+void test_zrangebyscore() {
+    sds cmdstr = sdsnew("ZRANGEBYSCORE ");
+    cmdstr = packkey(cmdstr, "myzset:__rand_int__");
+    cmdstr = sdscatprintf(cmdstr, "%s", " -inf +inf withscores limit 0 %d", config.inc_value);
+    printf("cmd: %s\n", cmdstr);
+
+    char* cmd;
+    int len = redisFormatCommand(&cmd, cmdstr);
+    benchmark("ZRANGEBYSCORE", cmd, len);
+    free(cmd);
+    sdsfree(cmdstr);
+}
+
 void test_hset(char* data) {
     sds cmdstr = sdsnew("HSET ");
     cmdstr = packkey(cmdstr, "myset:__rand_int__");
@@ -1036,6 +1049,10 @@ int main(int argc, const char **argv) {
 
         if (test_is_selected("zrange")) {
             test_zrange();
+        }
+
+        if (test_is_selected("zrangebyscore")) {
+            test_zrangebyscore();
         }
 
         if (test_is_selected("hset")) {
